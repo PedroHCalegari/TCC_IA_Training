@@ -1,9 +1,20 @@
-FROM python:3.13.7
+FROM python:3.13.7-slim
+
 
 WORKDIR /app
 
+
 COPY requirements.txt .
 
-RUN pip install -r requirements.txt
 
-COPY . .
+RUN pip install --no-cache-dir -r requirements.txt
+
+
+RUN pip install ipython
+
+
+RUN useradd -m -u 1000 devuser && chown -R devuser:devuser /app
+USER devuser
+
+
+CMD ["python"]
