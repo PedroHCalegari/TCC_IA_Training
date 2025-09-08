@@ -1,0 +1,26 @@
+O Database MIT-BIH Arrhythmia Database possui um total de 48 pacientes, cada um tendo o sinal ECG medido durante 30 min com uma frequência de 360Hz
+
+Dito isto, o arquivo .dat que armazena o sinal ECG bruto possui um total de 650000 linhas por paciente.
+
+Já o arquivo .atr que armazena anotações classificando o batimento de um paciente em um sample específico, possui em média 2200 até 3000 linhas.
+
+O motivo disso é que as classificações em cada sample SEMPRE são no pico R. E com isso, vem a parte mais importante para a entrada de dados no treinamento da IA.
+
+A classe ConvertDataMIT definida faz toda a parte do pré-processamento, desde a aquisição dos arquivos até a tratativa dos dados para input no treinamento da IA
+
+As funções já estão explicadas detalhadamente dentro do próprio código, então, a baixo será um resumo de todas as funções:
+- download_files_mitdb: Faz o download dos arquivos disponibilizados no mit e salva no diretório do projeto no formato: mitdb/paciente_n°paciente/n°paciente.atr, 
+n°paciente.dat e n°paciente.hea
+- extract_raw_data_each_patient: Extraí os dados brutos e as anotações dos arquivos do paciente.
+- bandpass_filter: Aplica o filtro passa-banda entre 0,5Hz até 40Hz para remoção dos ruídos.
+- segment_beats: Esse é o pré-processamento mais importante e não será apenas resumido. Essa função é responsável por mapear o pico R de cada batimento
+de um paciente através das anotações extraídas do arquivo .atr e criando uma janela em cima do sample desse pico R. Essa janela será responsável por obter a 
+morfologia da onda PQRST do batimento e normalizar a própria janela para a IA focar nessa morfologia. Essa parte é essencial porque a característica mais
+importante para detecção de arritmias é justamente a morfologia da onda PQRST de um batimento.
+- map_to_aami: Padroniza a classificação dos batimentos conforme a classe AAMI.
+- pre_process_patient: Chama todas as funções responsáveis pela aquisição dos dados e pré-processamento e especifica o n° do paciente.
+- pre_process_data: Realiza uma estrututa de repetição para que todos os 48 pacientes passem pelo pré-processamento e faz um append de todos, gerando um array 
+com todos eles salvos.
+
+Com o próprio treinamento da IA, será identificado a necessidade de utilizar as 2 funções que estão comentadas.
+

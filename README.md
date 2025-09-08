@@ -1,7 +1,14 @@
 # TCC_IA_Training
-Primeiros Passos:
-- Instalar docker e docker compose
-- Se for linux, rodar no bash: sudo usermod -aG docker $USER
-Após isso, ir no diretório raiz do projeto (TCC_IA_TRAINING) e rodar o comando:
-docker-compose -f devconteiner/docker-compose.yml up --build (Para subir o conteiner com a imagem atualizada)
-E docker-compose -f devconteiner/docker-compose.yml exec python-dev bash para conseguir acessar dentro do container.
+Desenvolvimento:
+    Para o desenvolvimento do código da IA, não será necessário utilizar o docker compose por enquanto.
+    Antes de começar a mexer no código após clonar/ realizar um pull do diretório, siga esses passos:
+    No terminal do diretório, criar um ambiente virtual .venv com o seguinte comando:
+    - python3 -m venv .venv
+    Em seguida, ativar o ambiente virtual com:
+    - source .venv/bin/activate
+    Assim, instalar as dependências já salvas em requirements.txt:
+    - pip install -r requirements.txt
+    Quando for fazer um push no repositório, sempre lembre de acessar o ambiente virtual e atualizar as dependências salvas no requirements.txt com:
+    - pip freeze > requirements.txt
+    Para fechar o ambiente virtual, rode:
+    deactivate

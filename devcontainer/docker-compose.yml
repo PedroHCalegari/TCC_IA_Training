@@ -1,11 +1,11 @@
 services:
   python-dev:
     build:
-      context: ..                # ← Contexto = pasta pai
-      dockerfile: devcontainer/Dockerfile  # ← Caminho para o Dockerfile
+      context: ..           
+      dockerfile: devcontainer/Dockerfile
     container_name: python-dev
     volumes:
-      - ..:/app                  # ← Mapeia pasta pai para /app
+      - ..:/app                  
       - pip-cache:/home/devuser/.cache/pip
     working_dir: /app
     command: tail -f /dev/null
