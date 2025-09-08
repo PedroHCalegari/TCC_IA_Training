@@ -23,4 +23,12 @@ importante para detecção de arritmias é justamente a morfologia da onda PQRST
 com todos eles salvos.
 
 Com o próprio treinamento da IA, será identificado a necessidade de utilizar as 2 funções que estão comentadas.
-
+Pontos a serem observados:
+A classificação dos batimentos são 5 possibilidades conforme a classe AAMI.
+Tamanho total = 112555
+- N (Normal) = 90588
+- S (Supraventricular) = 2781
+- V (Ventricular) = 7235
+- F (Fusion) = 802
+- Q (Unknown/Other) = 11149
+Excluindo a classificação Q (Unknown/Other), o tamanho total ficaria = 101406

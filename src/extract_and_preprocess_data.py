@@ -13,7 +13,7 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 #Definição da classe
-class ConvertDataMIT:
+class PreProcessDataMIT:
 
     def __init__(self):
         self.aami_classes = {
@@ -116,7 +116,7 @@ class ConvertDataMIT:
                         found = True
                         break
                 if not found:
-                    mapped.append('Q')  # Se não achar, coloca como "Q" (desconhecido)
+                    continue
             return np.array(mapped)
         except Exception as e:
             logging.error(f'Erro em fazer o mapeamento para classes AAMI: {e}')
@@ -130,11 +130,15 @@ class ConvertDataMIT:
         #Segmenta os batimentos em janelas
         beats, labels = self.segment_beats(signal, annotations, symbols, win_before, win_after)
         #Mapeamento para classes AAMI
-        labels = self.map_to_aami(labels)
+        mapped_labels = self.map_to_aami(labels)
+        #Desconsidera classe marcada como desconhecida/outro e filtra apenas os importantes para classificação de arritmia
+        valid_idx = [i for i, l in enumerate(mapped_labels) if l != 'Q']
+        beats = beats[valid_idx]
+        mapped_labels = mapped_labels[valid_idx]
         #Adiciona dimensão (necessária para CNN 1D)
         beats = np.expand_dims(beats, axis=-1)
         groups = np.array([record_id] * len(beats))
-        return beats, labels, groups
+        return beats, mapped_labels, groups
 
     #Estrutura de repetição para realizar o pré-processamento de todos os pacientes e concatenar.
     def pre_process_data(self):
@@ -154,10 +158,10 @@ class ConvertDataMIT:
         y = np.hstack(Y_list)
         groups = np.hstack(g_list)
 
-        loggin.info('Final do pré-processamento')
-        loggin.info(f' Shape X: {X.shape}')
-        loggin.info(f' Shape Y: {y.shape}')
-        loggin.info(f' Shape groups: {groups.shape}')
+        logging.info('Final do pré-processamento')
+        logging.info(f' Shape X: {X.shape}')
+        logging.info(f' Shape Y: {y.shape}')
+        logging.info(f' Shape groups: {groups.shape}')
         return X, y, groups
 
     #Reduz a quantidade de classes majoritárias que são marcadas como N (Será verificado a necessidade de utilização com base no treinamento da IA)
@@ -186,8 +190,8 @@ class ConvertDataMIT:
         # X_res = X_res.reshape((X_res.shape[0], X.shape[1], X.shape[2]))
         # return X_res, y_res
 
-#Define o que vai ser executado
+#Define o que vai ser executado ao rodar esse script python
 if __name__ == "__main__":
-    cd = ConvertDataMIT()
+    cd = PreProcessDataMIT()
     #cd.download_files_mitdb()
     cd.pre_process_data()
