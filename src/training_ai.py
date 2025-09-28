@@ -444,11 +444,11 @@ def run_optimized_pipeline():
     logging.info(f"Diferença (overfitting indicator): {overfitting_indicator:.4f}")
     
     if overfitting_indicator < 0.1:
-        logging.info("✅ Baixo risco de overfitting")
+        logging.info("Baixo risco de overfitting")
     elif overfitting_indicator < 0.3:
-        logging.info("⚠️ Moderado risco de overfitting")
+        logging.info("Moderado risco de overfitting")
     else:
-        logging.info("❌ Alto risco de overfitting - considere mais regularização")
+        logging.info("Alto risco de overfitting - considere mais regularização")
     
     return model, test_f1, test_auc
 
