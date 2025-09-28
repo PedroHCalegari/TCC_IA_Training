@@ -1,2 +1,4 @@
 mitdb/
 .venv/
+src/extract_data_PTB.py
+ptbxl_database/

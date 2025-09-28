@@ -6,6 +6,7 @@ from scipy.signal import butter, filtfilt
 import logging
 from collections import Counter
 from imblearn.over_sampling import SMOTE
+import matplotlib.pyplot as plt
 
 #Logging para melhor visualização no terminal
 logging.basicConfig(
@@ -86,23 +87,64 @@ class PreProcessDataMIT:
             return None, None, None
     
     #Segmenta o sinal bruto para considerar a parte mais importante do sinal, as anotações que identificam os picos R e também as normaliza
-    def segment_beats(self, signal, annotations, symbols, win_before, win_after):
-        beats, labels = [], []
-        #Estrutura de repetição para percorrer todos os picos R do paciente
-        try:
-            for i, sample in enumerate(annotations):
-                #Chegacem para garantir que a janela não ultrapasse o início ou o fim do sinal
-                if sample - win_before < 0 or sample + win_after >= len(signal):
-                    continue
-                #Corte de uma janela centrada no pico R para obter a morfologia completa do batimento (ex: Onda P, QRS e T)
-                window = signal[sample - win_before : sample + win_after]
-                # Normaliza cada janela (z-score) para a IA focar na morfologia do batimento e não na amplitude absoluta
-                window = (window - np.mean(window)) / (np.std(window) + 1e-8)
-                beats.append(window)
-                labels.append(symbols[i])
-            return np.array(beats), np.array(labels)
-        except Exception as e:
-            logging.error(f'Erro ao fazer a segmentação do sinal deste paciente: {e}')
+    def segment_beats_with_temporal_context(self, signal, annotations, symbols, win_before, win_after):
+        beats, labels, temporal_features = [], [], []
+        
+        for i, sample in enumerate(annotations):
+            if sample - win_before < 0 or sample + win_after >= len(signal):
+                continue
+                
+            # 1. Morfologia do batimento
+            window = signal[sample - win_before : sample + win_after]
+            window_norm = (window - np.mean(window)) / (np.std(window) + 1e-8)
+            
+            # 2. CONTEXTO TEMPORAL - Features mais completas
+            rr_features = []
+            
+            # RR intervals
+            if i > 0:
+                rr_current = (annotations[i] - annotations[i-1]) / self.sampling_rate
+                rr_features.append(rr_current)
+            else:
+                rr_features.append(0.0)
+                
+            if i > 1:
+                rr_previous = (annotations[i-1] - annotations[i-2]) / self.sampling_rate  
+                rr_variability = abs(rr_current - rr_previous)
+                rr_features.extend([rr_previous, rr_variability])
+            else:
+                rr_features.extend([0.0, 0.0])
+            
+            # RR próximo (para contexto completo)
+            if i < len(annotations) - 1:
+                rr_next = (annotations[i+1] - annotations[i]) / self.sampling_rate
+                rr_features.append(rr_next)
+            else:
+                rr_features.append(0.0)
+            
+            # Heart rate instantâneo
+            if rr_features[0] > 0:
+                hr_bpm = 60 / rr_features[0]
+                rr_features.append(hr_bpm)
+            else:
+                rr_features.append(0.0)
+            
+            # Features morfológicas básicas do batimento
+            morpho_features = [
+                np.max(window_norm),     # Amplitude máxima
+                np.min(window_norm),     # Amplitude mínima  
+                np.max(window_norm) - np.min(window_norm),  # Peak-to-peak
+                np.std(window_norm),     # Desvio padrão
+            ]
+            
+            # Combinar features temporais + morfológicas
+            combined_features = rr_features + morpho_features
+                
+            beats.append(window_norm)
+            labels.append(symbols[i])
+            temporal_features.append(combined_features)
+            
+        return np.array(beats), np.array(labels), np.array(temporal_features)
 
     #Padronização dos tipos de batimentos conforme classes AAMI
     def map_to_aami(self, labels):
@@ -119,50 +161,65 @@ class PreProcessDataMIT:
                     continue
             return np.array(mapped)
         except Exception as e:
-            logging.error(f'Erro em fazer o mapeamento para classes AAMI: {e}')
+            logging.error(f'Erro em fazer o mapeamento para classes AAMI: {e}') 
+
+    def map_to_binary_anomaly(self, labels):
+        mapped = []
+        for l in labels:
+            if l in ['N', 'L', 'R', 'e', 'j']:
+                mapped.append('Normal')
+            elif l in ['A', 'a', 'J', 'S', 'V', 'E', 'F']:
+                mapped.append('Anomaly')
+        return np.array(mapped)
     
     #Faz a extração de dados brutos e o pré-processamento do paciente
-    def pre_process_patient(self, record_id, win_before=100, win_after=200):
+    def pre_process_patient(self, record_id, win_before=150, win_after=200):
         #Extrai os dados dos arquivos
         signal, annotations, symbols = self.extract_raw_data_each_patient(record_id)
         #Aplica filtro passa-banda
         signal = self.bandpass_filter(signal)
         #Segmenta os batimentos em janelas
-        beats, labels = self.segment_beats(signal, annotations, symbols, win_before, win_after)
+        beats, labels, temporal_features = self.segment_beats_with_temporal_context(signal, annotations, symbols, win_before, win_after)
         #Mapeamento para classes AAMI
-        mapped_labels = self.map_to_aami(labels)
+        mapped_labels = self.map_to_binary_anomaly(labels)
         #Desconsidera classe marcada como desconhecida/outro e filtra apenas os importantes para classificação de arritmia
         valid_idx = [i for i, l in enumerate(mapped_labels) if l != 'Q']
         beats = beats[valid_idx]
         mapped_labels = mapped_labels[valid_idx]
+        temporal_features = temporal_features[valid_idx] 
         #Adiciona dimensão (necessária para CNN 1D)
         beats = np.expand_dims(beats, axis=-1)
         groups = np.array([record_id] * len(beats))
-        return beats, mapped_labels, groups
+        return beats, mapped_labels, temporal_features, groups
 
     #Estrutura de repetição para realizar o pré-processamento de todos os pacientes e concatenar.
-    def pre_process_data(self):
-        X_list, Y_list, g_list = [], [], []
+    def pre_process_data(self, apply_smote_global=False):
+        X_list, Y_list, T_list, g_list = [], [], [], []
         for record_id in self.available_records:
             try:
                 logging.info(f"Iniciando pré-Processamento do paciente {record_id}...")
-                X, y, g = self.pre_process_patient(record_id)
+                X, y, t, g = self.pre_process_patient(record_id)
                 if X is not None:
                     X_list.append(X)
                     Y_list.append(y)
+                    T_list.append(t)
                     g_list.append(g)
                 logging.info(f'Pré-processamento do paciente {record_id} finalizado, iniciando o próximo')
             except Exception as e:
                 logging.error(f'Pré-processamento do paciente {record_id} deu erro: {e}')
         X = np.vstack(X_list)
         y = np.hstack(Y_list)
+        temporal_features = np.vstack(T_list)
         groups = np.hstack(g_list)
 
         logging.info('Final do pré-processamento')
-        logging.info(f' Shape X: {X.shape}')
+        logging.info(f' Shape X (morfologia): {X.shape}')
+        logging.info(f' Shape temporal_features: {temporal_features.shape}')
         logging.info(f' Shape Y: {y.shape}')
         logging.info(f' Shape groups: {groups.shape}')
-        return X, y, groups
+        logging.info(f' Distribuição de classes: {Counter(y)}')
+        
+        return X, y, temporal_features, groups
 
     #Reduz a quantidade de classes majoritárias que são marcadas como N (Será verificado a necessidade de utilização com base no treinamento da IA)
     # def undersample(self, X, y):
@@ -181,17 +238,80 @@ class PreProcessDataMIT:
 
 
     #Aumenta as classes minoritárias (diferentes de N) sintetizando batimentos semelhantes (Será verificado a necessidade de utilização com base no treinamento da IA)
-    #def oversample(self, X, y):
-        # # Flatten para 2D
-        # X_flat = X.reshape((X.shape[0], -1))
-        # sm = SMOTE(random_state=42)
-        # X_res, y_res = sm.fit_resample(X_flat, y)
-        # # Volta para 3D
-        # X_res = X_res.reshape((X_res.shape[0], X.shape[1], X.shape[2]))
-        # return X_res, y_res
+    def apply_smote_global(self, X, y, temporal_features):
+        try:
+            # Remove a dimensão extra para SMOTE
+            X_flat = X.reshape((X.shape[0], -1))
 
+            # Combina features morfológicas e temporais
+            combined_features = np.hstack([X_flat, temporal_features])
+
+            # Define a nova estratégia de amostragem
+            counts = Counter(y)
+            minority_class = min(counts, key=counts.get)
+            majority_class = max(counts, key=counts.get)
+
+            # Aumenta para 40% da classe majoritária, como no seu exemplo
+            target_minority_samples = int(counts[majority_class] * 0.5) 
+            
+            sampling_strategy = {
+                minority_class: target_minority_samples,
+                majority_class: counts[majority_class] # Mantém a classe majoritária
+            }
+
+            logging.info(f"Aplicando SMOTE com a seguinte estratégia: {sampling_strategy}")
+
+            # Aplica SMOTE no lugar de apenas SMOTE
+            smote = SMOTE(sampling_strategy=sampling_strategy, random_state=42)
+            X_resampled, y_resampled = smote.fit_resample(combined_features, y)
+
+            # Separa as features novamente
+            n_morpho_features = X_flat.shape[1]
+            X_morpho_resampled = X_resampled[:, :n_morpho_features]
+            temporal_features_resampled = X_resampled[:, n_morpho_features:]
+
+            # Reconstrói a forma original do X
+            X_final = X_morpho_resampled.reshape((X_morpho_resampled.shape[0], X.shape[1], X.shape[2]))
+
+            return X_final, y_resampled, temporal_features_resampled
+
+        except Exception as e:
+            logging.error(f'Erro ao aplicar SMOTE global: {e}')
+            return X, y, temporal_features
+
+
+
+    def plot_signal(self, record_id, n_samples=2000):
+        # Extrai os dados brutos
+        signal, annotations, symbols = self.extract_raw_data_each_patient(record_id)
+        if signal is None:
+            logging.error(f"Não foi possível carregar o paciente {record_id}")
+            return
+        
+        # Aplica o filtro passa-banda
+        #signal = self.bandpass_filter(signal)
+
+        # Pega os primeiros n_samples
+        signal = signal[:n_samples]
+
+        # Converte para tempo em segundos
+        time = np.arange(len(signal)) / self.sampling_rate
+
+        # Converte amplitude para mV (assumindo que os dados estão em Volts)
+        #signal_mv = signal * 1000  
+
+        # Plot
+        plt.figure(figsize=(12, 4))
+        plt.plot(time, signal, label="ECG Signal", color="b")
+        plt.title(f"ECG Signal - Record {record_id} (First {n_samples} samples)")
+        plt.xlabel("Time (s)")
+        plt.ylabel("Amplitude (V)")
+        plt.legend()
+        plt.grid(True)
+        plt.savefig("ecg_record100.png", dpi=300)
 #Define o que vai ser executado ao rodar esse script python
 if __name__ == "__main__":
     cd = PreProcessDataMIT()
-    #cd.download_files_mitdb()
-    cd.pre_process_data()
+#     cd.pre_process_data()
+    #cd.pre_process_data()
+    cd.plot_signal(record_id=100)

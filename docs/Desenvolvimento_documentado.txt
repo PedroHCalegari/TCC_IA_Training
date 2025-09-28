@@ -32,3 +32,50 @@ Tamanho total = 112555
 - F (Fusion) = 802
 - Q (Unknown/Other) = 11149
 Excluindo a classificação Q (Unknown/Other), o tamanho total ficaria = 101406
+
+TREINAMENTO DO MODELO com CNN: OBSERVAÇÕES
+De início, adaptei o modelo para treinar sem muitas alterações. Dividi 80/20 treino e teste e adicionei peso para as classes minóritárias (S, V e F)
+Resultado: Completo fracasso.
+O modelo não conseguia validar as classes minoritárias e nem aprender direito. Aqui, verifiquei o problema que inicialmente já imaginei que teria 
+que é o desbalancemaneto de classes.
+A partir disso, fiz alguns ajustes como adicionar SMOTE para criar batimentos artificiais minoritários, e implementei focal loss com pesos de classe.
+Mesmo assim, o resultado não ficou bom. Melhorou comparado ao início, mas ainda não seria o suficiente.
+Por isso, será realizado uma adição de uma feature temporal que possibilita uma melhor detecção de arritmias.
+
+TREINAMENTO DO MODELO COM CNN + feature temporal (MLP):
+Como início, foi implementado no pré-processamento junto com a morfologia da onda as características temporais e morfológicas dos batimentos. Ou seja, 
+cada batimento terá a morfologia da onda, a classificação e as características que serão explicadas a seguir.
+
+ATENÇÃO: É muito importante entender que todas as features e a morfologia da onda são feitas por BATIMENTO.
+
+Entre as características temporais, foram consideradas:
+- O intervalo rr atual (Pega a diferença do tempo em segundos do pico R do batimento anterior e o pico r do batimento atual)
+- O intervalo rr anterior (Ainda considerando o batimento atual, pega a diferença do tempo em segundos do pico R do batimento em -2 e o batimento anterior. 
+Mesmo que não seja considerado o batimento atual nesse cálculo).
+- Calcula a variabilidade entre o intervalo rr atual e o intervalo rr anterior
+- O intervalo rr posterior (Pega a diferença do tempo em segundos do pico R do batimento atual e do pico r do batimento posterior).
+- Cálcula os batimentos por minuto considerando o intervalo rr atual (Por exemplo, se o intervalo atual for 0,8s então teria 75bpm.)
+Existem arritmias que não são facilmente detectadas apenas pela morfologia da onda, mas principalmente pelas alterações no ritmo. Por isso, é crucial pegar o 
+contexto dos intervalos dos batimentos para identificar se durante um batimento e outro teve irregularidade ou uma grande diferença nos intervalos.
+
+As características morfológicas são feitas para terem uma função parecida com a morfologia extraída para a CNN. Mas com a migração do treinamento para o modelo 
+hibrido e não CNN pura, essas características permitiram a CNN focar em aprender padrões mais sutis reduzindo a carga da CNN.
+O motivo de utilizar essas features é para melhorar o máximo possível o treinamento, visto que os dados de input não são grandes e o treinamento 
+precisa ser mais simples.
+
+CNN -> Não mudou nada, foi utilizado as janelas dos batimentos com a morfologia da onda como input. 
+
+MLP -> Utilizou-se das características extraídas, tanto temporal quanto morfológica.
+
+Muita coisa foi parecida com o treinamento anterior. Ainda foi implementado SMOTE para criar batimentos artificiais das classes minoritárias, ainda foi utilizado
+focal loss com pesos de classe e houve a separação de grupos (batimentos de pacientes utilizados no treino não foram misturados com o teste).
+Os resultados foram bem melhores. O problema de overfitting foi resolvido, a classe normal teve muito pouco falso negativo e a classe de arritmias melhorou na
+sensibilidade e na separação de classes. Porém, os dados utilizados no modelo são clínicos e por consequência muito sensíveis. Falsos negativos do batimento
+normal são erros críticos e falsos positivos de batimentos de arritmias são igualmente críticos. Por tanto, o modelo de IA desenvolvido somente utilizando do banco
+do MIT não seria o suficiente para termos o resultado esperado ao final do TCC. Dito isso, foi feito a conclusão da necessidade de realizar um treinamento de modelo
+mais robusto e ter um melhor resultado no teste. Para isso, será necessário ter um dataset melhor e igualmente mais robusto, o qual será o 
+PhysioNet Challenge (2020).
+
+Os mesmos pré-processamento serão realizados com a junção dos dados do MIT e do PhysioNet.
+
+
