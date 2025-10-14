@@ -74,8 +74,30 @@ sensibilidade e na separação de classes. Porém, os dados utilizados no modelo
 normal são erros críticos e falsos positivos de batimentos de arritmias são igualmente críticos. Por tanto, o modelo de IA desenvolvido somente utilizando do banco
 do MIT não seria o suficiente para termos o resultado esperado ao final do TCC. Dito isso, foi feito a conclusão da necessidade de realizar um treinamento de modelo
 mais robusto e ter um melhor resultado no teste. Para isso, será necessário ter um dataset melhor e igualmente mais robusto, o qual será o 
-PhysioNet Challenge (2020).
+PTB-XL da PhysioNet.
 
-Os mesmos pré-processamento serão realizados com a junção dos dados do MIT e do PhysioNet.
+Motivos principais para a migração de dataset:
+- O MIT possui classificação por batimento, já o PTB-XL possui classificação por sinal ECG. Dito isso, o MIT é um dataset melhor para monitoramento do sinal 
+cardíaco, enquanto isso, o PTB-XL é um dataset melhor para diagnóstico clínico que é o foco desse projeto. Não precisaria continuar a listar motivos, 
+mas vamos mesmo assim.
+- Ambos possuem problemas com balanceamento de classes, mas como o MIT é classificado por batimento, esse desbalanceamento é MUITO maior. O PTB-XL possui casos de
+arritmia o suficiente para que seja apenas aplicado undersampling em cima das classificações normais e assim ter um balanceamento muito mais sólido. 
+Precisa de mais? Então vai mais.
+- Derivações em ECG são formas diferentes de se observar o sinal elétrico do coração. Usando um exemplo de carro, se você olhar de frente verá o capô, se olhar 
+de lado verá a porta, se olhar de traś verá a traseira. As derivações são análisadas dessa mesma forma do exemplo do carro, ou seja, quanto mais derivações tiver,
+mais perspectivas diferentes você conseguirá analisar o mesmo sinal ECG do paciente ao longo do tempo. Nesse sentido, o MIT possui 2 derivações, enquanto o PTB-XL
+possui DOZE!! derivações. Ai acabou ne? NÃO.
+- O PTB-XL possui um dataset muito maior, com 21000 pacientes diferentes (Mesmo que só iremos utilizar 7500 mais ou menos) e cada um dos sinais foram extraidos
+10-15 seg em média além de ter 500Hz (O nosso embarcado possui 475Hz). Ou seja, fica muito mais próximo do sinal que iremos extrair do embarcado. 
+A partir de todos esses motivos, foi decidido fazer a mudança para esse dataset.
 
+PRÉ-PROCESSAMENTO PTB-XL
+O pré-processamento não mudou muita coisa. As janelas foram alteradas para 5000 samples para considerar uma média de 10s do sinal por paciente, foi utilizado 
+novamente o modelo AAMI de classificação, realizou-se uma detecção dos picos R para extração das features temporais, foi retirado o oversample em cima das classes
+minoritárias e adicionado o undersampling na classe majoritária. E, por último, foi adicionado as 12 
+derivações. Fora esses pontos não mudou nada, o filtro passa-banda continuou sendo utilizado.
+
+TREINAMENTO DO MODELO:
+Com a alteração do dataset, foi permitido aumentar muito a complexidade do treinamento. A priori, cotinuou sendo um modelo híbrido com uma CNN 1D. Mas o
+maior ponto de mudança foi a adição das derivações no treinamento. Essa adição junto com as janelas impulsionaram MUITO a performance da rede neural CNN.
 
